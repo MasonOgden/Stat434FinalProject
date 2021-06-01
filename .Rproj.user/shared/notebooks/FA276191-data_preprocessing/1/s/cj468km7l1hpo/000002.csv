@@ -1,0 +1,51 @@
+"0","dir <- here::here()"
+"0","dataset_dir <- dir %>%"
+"0","  paste0(""/datasets"")"
+"0",""
+"0","df <- dataset_dir %>%"
+"0","  paste0(""/train.csv"") %>%"
+"0","  read_csv() %>%"
+"0","  rename(animal_id = AnimalID, animal_name = Name, outcome_datetime = DateTime, "
+"0","         outcome = OutcomeType, outcome_subtype = OutcomeSubtype, "
+"0","         animal_type = AnimalType, sex = SexuponOutcome, "
+"0","         age = AgeuponOutcome, breed = Breed, color = Color) %>%"
+"0","  relocate(outcome, .after = ""animal_id"")"
+"1","
+[36m--[39m [1m[1mColumn specification[1m[22m [36m---------------------------------------------------------------------------------------------[39m
+cols(
+  AnimalID = [31mcol_character()[39m,
+  Name = [31mcol_character()[39m,
+  DateTime = [34mcol_datetime(format = """")[39m,
+  OutcomeType = [31mcol_character()[39m,
+  OutcomeSubtype = [31mcol_character()[39m,
+  AnimalType = [31mcol_character()[39m,
+  SexuponOutcome = [31mcol_character()[39m,
+  AgeuponOutcome = [31mcol_character()[39m,
+  Breed = [31mcol_character()[39m,
+  Color = [31mcol_character()[39m
+)
+
+"
+"0","test_df <- dataset_dir %>%"
+"0","  paste0(""/test.csv"") %>%"
+"0","  read_csv() %>%"
+"0","  rename(animal_id = ID, animal_name = Name, outcome_datetime = DateTime, "
+"0","         animal_type = AnimalType, sex = SexuponOutcome, "
+"0","         age = AgeuponOutcome, breed = Breed, color = Color) %>%"
+"0","  mutate(animal_id = as.character(animal_id))"
+"1","
+[36m--[39m [1m[1mColumn specification[1m[22m [36m---------------------------------------------------------------------------------------------[39m
+cols(
+  ID = [32mcol_double()[39m,
+  Name = [31mcol_character()[39m,
+  DateTime = [34mcol_datetime(format = """")[39m,
+  AnimalType = [31mcol_character()[39m,
+  SexuponOutcome = [31mcol_character()[39m,
+  AgeuponOutcome = [31mcol_character()[39m,
+  Breed = [31mcol_character()[39m,
+  Color = [31mcol_character()[39m
+)
+
+"
+"0","df_small <- df %>% "
+"0","  slice_sample(n = 1000)"

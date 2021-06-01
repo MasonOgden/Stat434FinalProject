@@ -1,0 +1,168 @@
+---
+title: "Data Preprocessing"
+author: "Mason Ogden"
+date: "6/1/2021"
+output: html_document
+---
+
+[Link](https://www.kaggle.com/c/shelter-animal-outcomes/data) to Kaggle competition
+
+**Packages**
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(tidymodels)
+
+set.seed(143)
+```
+
+**Data**
+
+```{r, message = FALSE}
+dir <- here::here()
+dataset_dir <- dir %>%
+  paste0("/datasets")
+
+df <- dataset_dir %>%
+  paste0("/train.csv") %>%
+  read_csv() %>%
+  rename(animal_id = AnimalID, animal_name = Name, outcome_datetime = DateTime, 
+         outcome = OutcomeType, outcome_subtype = OutcomeSubtype, 
+         animal_type = AnimalType, sex = SexuponOutcome, 
+         age = AgeuponOutcome, breed = Breed, color = Color) %>%
+  relocate(outcome, .after = "animal_id")
+
+test_df <- dataset_dir %>%
+  paste0("/test.csv") %>%
+  read_csv() %>%
+  rename(animal_id = ID, animal_name = Name, outcome_datetime = DateTime, 
+         animal_type = AnimalType, sex = SexuponOutcome, 
+         age = AgeuponOutcome, breed = Breed, color = Color) %>%
+  mutate(animal_id = as.character(animal_id))
+
+df_small <- df %>% 
+  slice_sample(n = 1000)
+```
+
+Observations:
+  1. ~~ID column that needs to be dropped for prediction~~
+  2. ~~Lots of missing values for 'name', but probably won't be used for prediction~~
+    + unless you want to do some kind of sentiment analysis with transfer learning
+  3. ~~Not sure how to use/if I should use the 'OutcomeSubtype' variable, seems like a more specific version of the response variable 'Outcome'. ~~
+    + removed
+  4. ~~Probably a ton of unique values in the 'breed' column~~
+    + I converted it to a simple binary 'mix/not mix'
+  5. ~~There's a datetime column that probably contains some useful information, like when the outcome happened (month, time of day, year, etc...), holiday.~~ 
+  6. ~~'Age' column needs to be converted to numeric.~~
+  
+### Preprocessing
+
+**Converting age to numeric**
+
+```{r}
+age_to_years_numeric <- function(age_char) {
+  case_when(
+    # if measured in years
+    str_detect(age_char, pattern = "year") ~ as.double(str_extract(age_char, pattern= "\\d+")),
+    # if measured in months
+    str_detect(age_char, pattern = "month") ~ as.double(str_extract(age_char, pattern = "\\d+")) / 12,
+    # if measured in weeks
+    str_detect(age_char, pattern = "week") ~ as.double(str_extract(age_char, pattern = "\\d+")) / 52.1429,
+    # if measured in days
+    str_detect(age_char, pattern = "day") ~ as.double(str_extract(age_char, pattern = "\\d+")) / 365
+  )
+}
+```
+
+**Simplifying the 'breed' variable**
+  
+```{r}
+collapse_breeds <- function(breed_vec) {
+  ifelse(str_detect(breed_vec, pattern = "Mix|\\/"), "Mix", breed_vec)
+}
+```
+
+**Reducing number of unique animal colors**
+
+```{r}
+collapse_colors <- function(colors_fac) {
+  colors_vec <- as.character(colors_fac)
+  
+  case_when(
+    str_detect(colors_vec, pattern = "Tabby") ~ "Tabby",
+    str_detect(colors_vec, pattern = "Point") ~ "Point",
+    str_detect(colors_vec, pattern = "Brindle") ~ "Brindle",
+    str_detect(colors_vec, pattern = "Calico") ~ "Calico",
+    str_detect(colors_vec, pattern = "Merle") ~ "Merle",
+    str_detect(colors_vec, pattern = "Tricolor") ~ "Tricolor",
+    str_detect(colors_vec, pattern = "Sable") ~ "Sable",
+    str_detect(colors_vec, pattern = "Blue Tick") |  str_detect(colors_vec, pattern = "Blue Cream") ~ "Blue",
+    str_detect(colors_vec, pattern = "Black Smoke") ~ "Black",
+    str_detect(colors_vec, pattern = "/") ~ "Multiple colors",
+    str_detect(colors_vec, pattern = "Tortie") | str_detect(colors_vec, pattern = "Torbie") ~ "Tortie/Torbie",
+    TRUE ~ colors_vec
+  )
+}
+```
+
+**Preprocessing Recipe**
+
+Does everything below but in one big step:
+
+```{r}
+preproc_rec <- recipe(outcome ~ ., data = df_small) %>%
+  # set 'animal_id' as the identifier variable, not to be used in prediction
+  update_role(animal_id, new_role = "id") %>%
+  # data preprocessing
+  step_mutate(
+    # convert age to numeric
+    age = age_to_years_numeric(age),
+    # add month variable (as a factor)
+    outcome_month = factor(month(outcome_datetime)),
+    # add year variable (as a factor)
+    outcome_year = factor(year(outcome_datetime)),
+    # reduce number of unique breeds
+    mix = factor(collapse_breeds(breed)),
+    # reduce number of unique animal colors
+    color = factor(collapse_colors(color))
+    ) %>%
+  # add indicator variable for if date is a holiday
+  step_holiday(outcome_datetime,
+               holidays = c("ChristmasEve", "NewYearsDay", "USChristmasDay",
+                            "USThanksgivingDay")) %>%
+  # remove columns that are no longer useful
+  step_rm(outcome_datetime, breed, animal_name, outcome_subtype)
+```
+
+**Applying Recipe**
+
+```{r}
+# fit to training data
+preproc_prepped <- preproc_rec %>% prep(df)
+
+# apply to training data
+preproc_train <- preproc_prepped %>% bake(df)
+
+# apply to test data
+preproc_test <- preproc_prepped %>% bake(test_df) %>%
+  mutate(animal_id = as.character(1:nrow(test_df)))
+
+preproc_test %>% head()
+```
+
+
+### Outputting Preprocessed Data
+
+```{r}
+preproc_dir <- dir %>%
+  paste0("/preprocessed_data")
+
+preproc_train %>%
+  write_csv(paste0(preproc_dir, "/train_preprocessed.csv"))
+
+preproc_test %>%
+  write_csv(paste0(preproc_dir, "/test_preprocessed.csv"))
+```
+

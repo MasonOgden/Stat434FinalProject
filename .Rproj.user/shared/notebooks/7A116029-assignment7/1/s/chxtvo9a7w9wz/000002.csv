@@ -1,0 +1,7 @@
+"0","zoo_rec <- recipe(Class_Type ~ ., data = zoo) %>%"
+"0","  update_role(animal_name, new_role = ""ID"") %>%"
+"0","  step_pca(all_numeric(), threshold = 0.8, "
+"0","           options = c(center = TRUE))"
+"0",""
+"0","zoo_trained <- zoo_rec %>% prep(zoo)"
+"0","zoo_pcs <- zoo_trained %>% bake(zoo)"

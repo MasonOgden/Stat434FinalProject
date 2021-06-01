@@ -1,0 +1,8 @@
+"0","zoo_pca <- zoo_matrix %>%"
+"0","  prcomp()"
+"0",""
+"0","zoo_pca %$%"
+"0","  rotation %>%"
+"0","  as.data.frame() %>% "
+"0","  select(PC1, PC2, PC3) %>%"
+"0","  arrange(desc(abs(PC3)))"

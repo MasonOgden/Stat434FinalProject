@@ -1,0 +1,28 @@
+"0","zoo <- read_csv(""https://www.dropbox.com/s/kg89g2y3tp6p9yh/zoo_final.csv?dl=1"")"
+"1","
+[36m--[39m [1m[1mColumn specification[1m[22m [36m---------------------------------------------------------------------------------------------[39m
+cols(
+  Class_Type = [31mcol_character()[39m,
+  animal_name = [31mcol_character()[39m,
+  hair = [32mcol_double()[39m,
+  feathers = [32mcol_double()[39m,
+  eggs = [32mcol_double()[39m,
+  milk = [32mcol_double()[39m,
+  airborne = [32mcol_double()[39m,
+  aquatic = [32mcol_double()[39m,
+  predator = [32mcol_double()[39m,
+  toothed = [32mcol_double()[39m,
+  backbone = [32mcol_double()[39m,
+  breathes = [32mcol_double()[39m,
+  venomous = [32mcol_double()[39m,
+  fins = [32mcol_double()[39m,
+  legs = [32mcol_double()[39m,
+  tail = [32mcol_double()[39m,
+  domestic = [32mcol_double()[39m,
+  catsize = [32mcol_double()[39m
+)
+
+"
+"0","zoo_matrix <- zoo %>%"
+"0","  select(-Class_Type, -animal_name) %>%"
+"0","  as.matrix() "

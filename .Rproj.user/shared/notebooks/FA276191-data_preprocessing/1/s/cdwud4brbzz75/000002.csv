@@ -1,0 +1,8 @@
+"0","preproc_dir <- dir %>%"
+"0","  paste0(""/preprocessed_data"")"
+"0",""
+"0","preproc_train %>%"
+"0","  write_csv(paste0(preproc_dir, ""/train_preprocessed.csv""))"
+"0",""
+"0","preproc_test %>%"
+"0","  write_csv(paste0(preproc_dir, ""/test_preprocessed.csv""))"
