@@ -5,6 +5,8 @@ date: "6/1/2021"
 output: html_document
 ---
 
+### Setup
+
 [Link](https://www.kaggle.com/c/shelter-animal-outcomes/data) to Kaggle competition
 
 Questions: 
@@ -16,7 +18,6 @@ Questions:
 ```{r, warning = FALSE, message = FALSE}
 library(tidyverse)
 library(magrittr)
-library(lubridate)
 library(tidymodels)
 library(baguette)
 library(plsmod)
@@ -34,92 +35,569 @@ dir <- here::here()
 preproc_dir <- dir %>%
   paste0("/preprocessed_data")
 
-train <- preproc_dir %>%
+train_small <- preproc_dir %>%
   paste0("/train_preprocessed.csv") %>%
-  read_csv()
+  read_csv() %>%
+  drop_na() %>%
+  mutate(
+    animal_type = factor(animal_type),
+    sex = factor(sex),
+    color = factor(color),
+    outcome = factor(outcome),
+    outcome_month = factor(outcome_month),
+    outcome_year = factor(outcome_year),
+    mix = factor(mix)
+  ) %>%
+  slice_sample(n = 2000)
 
 test <- preproc_dir %>%
   paste0("/test_preprocessed.csv") %>%
   read_csv()
+
+train_cv <- vfold_cv(train_small, v = 5, strata = outcome)
 ```
 
-**Approaches**
+### Data Preprocessing
+
+```{r}
+animal_rec <- recipe(outcome ~ ., data = train_small) %>%
+  update_role(animal_id, new_role = "ID") %>%
+  step_normalize(age) %>%
+  step_nzv(mix) %>%
+  step_dummy(all_nominal_predictors())
+  #step_nzv(contains("animal_type"),
+  #         contains("sex"), contains("color"),
+  #         contains("outcome_month"),
+  #         contains("outcome_year"))
+
+animal_trained <- animal_rec %>% prep(train_small)
+train_proc <- animal_trained %>% bake(train_small)
+
+class_spec_names <- c()
+class_spec_list <- vector(mode= "list", length = 4)
+
+lda_spec_names <- c()
+lda_spec_list <- vector(mode = "list", length = 1)
+
+other_spec_names <- c()
+other_spec_list <- vector(mode = "list", length = 3)
+
+svm_spec_names <- c()
+svm_spec_list <- vector(mode = "list", length = 2)
+
+rule_spec_names <- c()
+rule_spec_list <- vector(mode = "list", length = 2)
+```
+
+
+### Modeling
+
+#### Specifying the models
 
 [Link](https://www.tidymodels.org/find/parsnip/) to list of Tidymodels models
-
-1. Bagged MARS model
-  + engine: "earth"
-  + bag_mars()
   
-2. Bagged Decision Tree
+1. Bagged Decision Tree
   + engine: "rpart"
   + bag_tree()
   
-3. Boosted Tree
+```{r}
+bag_dtree <- bag_tree() %>%
+  set_engine("rpart", times = 3) %>%
+  set_mode("classification")
+
+class_spec_list[[1]] <- bag_dtree
+class_spec_names <- c(class_spec_names, "bagged decision tree")
+```
+
+  
+2. Boosted Tree
   + engine: "xgboost"
   + boost_tree()
   
-4. Decision Tree
+```{r}
+boosted_tree <- boost_tree() %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+rule_spec_list[[1]] <- boosted_tree
+rule_spec_names <- c(other_spec_names, "boosted tree")
+```
+
+  
+3. Decision Tree
   + engine: "rpart"
   + decision_tree()
   
-5. MARS
-  + "earth"
-  + mars()
+```{r}
+dtree <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+class_spec_list[[2]] <- dtree
+class_spec_names <- c(class_spec_names, "decision tree")
+```
+
   
-6. Multi-layer Perceptron
+4. Multi-layer Perceptron
   + just a single layer neural network
   + engine: "keras"
   + mlp()
   
-7. KNN
+```{r}
+mlperceptron <- mlp() %>%
+  set_engine("keras") %>%
+  set_mode("classification")
+
+other_spec_list[[1]] <- mlperceptron
+other_spec_names <- c(other_spec_names, "MLP")
+```
+
+  
+5. KNN
   + engine: "kknn"
   + nearest_neighbor()
   
-8. Partial Least Squares (PLS)
-  + engine: "mixOmics"
-  + pls()
+```{r}
+knn <- nearest_neighbor() %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+class_spec_list[[3]] <- knn
+class_spec_names <- c(class_spec_names, "KNN")
+```
+
   
-9. Random Forest
+7. Random Forest
   + engine: "randomForest"
   + rand_forest()
   
-10. RuleFit Models
-  + engine: "xrf"
-  + rule_fit()
+```{r}
+random_forest <- rand_forest() %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+class_spec_list[[4]] <- random_forest
+class_spec_names <- c(class_spec_names, "random forest")
+```
+
   
-11. Polynomial SVM
+8. Polynomial SVM
   + engine: "kernlab"
   + svm_poly()
+  
+```{r}
+svm <- svm_poly() %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
 
-12. RBF SVM
+svm_spec_list[[1]] <- svm
+svm_spec_names <- c(svm_spec_names, "svm")
+```
+
+
+9. RBF SVM
   + engine: "kernlab"
   + svm_rbf()
   
-13. C5.0 Rule-based Classification
+```{r}
+svm_radial <- svm_rbf() %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+svm_spec_list[[2]] <- svm
+svm_spec_names <- c(svm_spec_names, "svm rbf")
+```
+
+  
+10. C5.0 Rule-based Classification
   + engine: "C5.0"
   + C5_rules()
   
-14. Flexible Discriminant Model
+```{r}
+c5_rules <- C5_rules() %>%
+  set_engine("C5.0") %>%
+  set_mode("classification")
+
+rule_spec_list[[2]] <- c5_rules
+rule_spec_names <- c(rule_spec_names, "C5.0 rules")
+```
+
+  
+11. Flexible Discriminant Model
   + engine: "earth"
   + discrim_flexible()
   
-15. LDA
-  + engine: "MASS"
-  + discrim_linear()
-  
-16. Regularized LDA
-  + engine: "klaR"
-  + discrim_regularized()
-  
-17. Multinomial Regression
+```{r}
+flexible_lda <- discrim_flexible() %>%
+  set_engine("earth") %>%
+  set_mode("classification")
+
+lda_spec_list[[1]] <- flexible_lda
+lda_spec_names <- c(lda_spec_names, "flexible LDA")
+```
+
+
+12. Multinomial Regression
   + engine: "glmnet"
   + multinom_reg()
   
-18. Naive Bayes
+```{r}
+mlr <- multinom_reg() %>%
+  set_engine("keras") %>%
+  set_mode("classification")
+
+other_spec_list[[2]] <- mlr
+other_spec_names <- c(other_spec_names, "multinomial regression")
+```
+
+  
+13. Naive Bayes
   + engine: "klaR"
   + naive_bayes()
   
-19. Neural Network
+```{r}
+nbclassifier <- naive_Bayes() %>%
+  set_engine("klaR") %>%
+  set_mode("classification")
+
+other_spec_list[[3]] <- nbclassifier
+other_spec_names <- c(other_spec_names, "naive bayes")
+```
+
+  
+14. Neural Network
   + made using keras from scratch
   + look up architectures for classification
+  
+#### Fitting Models with Cross-validation
+
+```{r}
+tibble(
+  category = c("class", "lda", "svm", "rule", "other"),
+  num_models = c(length(class_spec_names),
+                 length(lda_spec_names),
+                 length(svm_spec_names),
+                 length(rule_spec_names),
+                 length(other_spec_names)
+                 ),
+  models = c(paste0(class_spec_names, collapse = ", "),
+             paste0(lda_spec_names, collapse = ", "),
+             paste0(svm_spec_names, collapse = ", "),
+             paste0(rule_spec_names, collapse = ", "),
+             paste0(other_spec_names, collapse = ", ")
+             )
+)
+```
+
+**Models from Class**
+
+```{r}
+# none fail
+number_to_run <- 1:4
+
+class_cv_fitted_models <- class_spec_list[number_to_run] %>%
+  map(\(x) workflow() %>%
+        add_recipe(animal_rec) %>%
+        add_model(x) %>%
+        fit_resamples(train_cv))
+
+class_cv_results <- map2_df(class_cv_fitted_models, class_spec_names[number_to_run],
+        \(x, y) x %>% 
+          collect_metrics() %>%
+          add_column(model_name = y, .before = ".metric") %>%
+          dplyr::select(model_name, metric = .metric, cv_value = mean)
+        )
+
+class_cv_results %>%
+  ggplot(aes(x = model_name, y = cv_value, fill = metric)) + 
+  geom_col(position = "dodge") + 
+  coord_flip() + 
+  labs(x = "", y = "Cross-validated Value",
+       title = "Comparing Cross-validated Metrics of 4 Classification Models",
+       subtitle = "Note: no hyperparameters have been tuned")
+```
+
+**LDA Models**
+
+```{r}
+number_to_run <- 1
+
+lda_cv_fitted_models <- lda_spec_list[number_to_run] %>%
+  map(\(x) workflow() %>%
+        add_recipe(animal_rec) %>%
+        add_model(x) %>%
+        fit_resamples(train_cv))
+
+lda_cv_results <- map2_df(lda_cv_fitted_models, lda_spec_names[number_to_run],
+        \(x, y) x %>% 
+          collect_metrics() %>%
+          add_column(model_name = y, .before = ".metric") %>%
+          dplyr::select(model_name, metric = .metric, cv_value = mean)
+        )
+
+lda_cv_results
+```
+
+
+**SVM models**
+
+```{r}
+# both run
+number_to_run <- 1:2
+
+svm_cv_fitted_models <- svm_spec_list[number_to_run] %>%
+  map(\(x) workflow() %>%
+        add_recipe(animal_rec) %>%
+        add_model(x) %>%
+        fit_resamples(train_cv))
+
+svm_cv_results <- map2_df(svm_cv_fitted_models, svm_spec_names[number_to_run],
+        \(x, y) x %>% 
+          collect_metrics() %>%
+          add_column(model_name = y, .before = ".metric") %>%
+          dplyr::select(model_name, metric = .metric, cv_value = mean)
+        )
+
+svm_cv_results
+```
+
+**Rule-based models**
+
+```{r}
+# 2 runs but takes a while, 3 runs
+number_to_run <- 1:2
+
+rule_cv_fitted_models <- rule_spec_list[number_to_run] %>%
+  map(\(x) workflow() %>%
+        add_recipe(animal_rec) %>%
+        add_model(x) %>%
+        fit_resamples(train_cv))
+
+rule_cv_results <- map2_df(rule_cv_fitted_models, rule_spec_names[number_to_run],
+        \(x, y) x %>% 
+          collect_metrics() %>%
+          add_column(model_name = y, .before = ".metric") %>%
+          dplyr::select(model_name, metric = .metric, cv_value = mean)
+        )
+
+rule_cv_results
+```
+
+**Other models**
+
+```{r}
+number_to_run <- 1:3
+
+other_cv_fitted_models <- other_spec_list[number_to_run] %>%
+  purrr::map(\(x) workflow() %>%
+        add_recipe(animal_rec) %>%
+        add_model(x) %>%
+        fit_resamples(train_cv))
+
+other_cv_results <- map2_df(other_cv_fitted_models, other_spec_names[number_to_run],
+        \(x, y) x %>% 
+          collect_metrics() %>%
+          add_column(model_name = y, .before = ".metric") %>%
+          dplyr::select(model_name, metric = .metric, cv_value = mean)
+        )
+
+other_cv_results
+```
+
+### Aggregating Baseline Model Results
+
+```{r}
+baseline_model_results <- rbind(class_cv_results, lda_cv_results, svm_cv_results, rule_cv_results, other_cv_results)
+
+asc_rocauc_order <- baseline_model_results %>%
+  filter(metric == "roc_auc") %>% 
+  arrange(cv_value) %>% 
+  pull(model_name)
+
+baseline_model_results %>%
+  mutate(model_name = factor(model_name, levels = asc_rocauc_order)) %>%
+  ggplot(aes(x = model_name, y = cv_value, fill = metric)) + 
+  geom_col(position = "dodge") + 
+  coord_flip() + 
+  labs(x = "", y = "Cross-validated Value",
+       title = "Comparing Cross-validated Metrics of 12 Classification Models",
+       subtitle = "Note: no hyperparameters have been tuned")
+  
+```
+
+### Tuning Hyperparameters of Top 4 Models:
+
+```{r}
+rev(asc_rocauc_order)[1:4]
+```
+
+**Flexible LDA**
+
+Wasn't able to tune `num_terms` because using anything less than all 58 columns results in matrix singularity issues. 
+
+All pruning methods except "backward" and "none" were not compatible with anything but binary classification
+
+```{r}
+lda_flex_tune <- discrim_flexible(prod_degree = tune(),
+                                  prune_method = tune()) %>%
+  set_engine("earth") %>% 
+  set_mode("classification")
+
+lda_tune_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(lda_flex_tune)
+
+lda_tune_grid <- expand.grid(prod_degree = c(1, 2), prune_method = c("backward", "none"))
+
+lda_tune_gs <- tune_grid(
+  lda_tune_wflow,
+  resamples = train_cv,
+  grid = lda_tune_grid
+)
+
+best_lda_attrs <- lda_tune_gs %>% 
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean)
+
+best_prod_degree <- best_lda_attrs %>% 
+  pull(prod_degree)
+
+best_prune_method <- best_lda_attrs %>%
+  pull(prune_method)
+
+best_lda_flex_spec <- discrim_flexible(prod_degree = best_prod_degree,
+                                       prune_method = best_prune_method) %>%
+  set_engine("earth") %>% 
+  set_mode("classification")
+
+lda_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(best_lda_flex_spec)
+```
+
+**Decision Tree**
+
+```{r}
+dtree_tune <- decision_tree(cost_complexity = tune(),
+                            tree_depth = tune(),
+                            min_n = tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+```
+
+**Boosted Tree**
+
+Optimize groups below one at a time
+
+each tree: mtry, min_n, tree_depth
+
+boosting: trees, learn_rate
+
+Tuning individual tree parameters:
+
+```{r}
+btree_tune1 <- boost_tree(mtry = tune(),
+                          min_n = tune(),
+                          tree_depth = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+btree_tune1_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(btree_tune1)
+
+btree_tune1_grid <- grid_regular(mtry(c(1, ncol(train_proc))),
+                                 min_n(),
+                                 tree_depth(),
+                                 levels = 3
+                                 )
+
+btree_tune1_gs <- tune_grid(
+  btree_tune1_wflow,
+  resamples = train_cv,
+  grid = btree_tune1_grid
+)
+
+best_btree_tune1 <- btree_tune1_gs %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean)
+
+best_mtry <- best_btree_tune1 %>%
+  pull(mtry)
+
+best_min_n <- best_btree_tune1 %>%
+  pull(min_n)
+
+best_tree_depth <- best_btree_tune1 %>%
+  pull(tree_depth)
+```
+
+Tuning boosting parameters:
+
+```{r}
+btree_tune2 <- boost_tree(mtry = best_mtry,
+                          min_n = best_min_n,
+                          tree_depth = best_tree_depth,
+                          trees = tune(),
+                          learn_rate = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+btree_tune2_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(btree_tune2)
+
+btree_tune2_grid <- grid_regular(trees(),
+                                 learn_rate(),
+                                 levels = 3
+                                 )
+
+btree_tune2_gs <- tune_grid(
+  btree_tune2_wflow,
+  resamples = train_cv,
+  grid = btree_tune2_grid
+)
+
+best_btree_tune2 <- btree_tune1_gs %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean)
+
+best_num_tres
+```
+
+
+```{r}
+rforest_tune <- rand_forest(mtry = tune(),
+                            trees = tune(),
+                            min_n = tune()) %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+rforest_tune_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(rforest_tune)
+
+rforest_tune_grid <- grid_regular(mtry(c(1, ncol(train_proc))),
+                              dials::trees(),
+                              min_n(),
+                              levels = 2
+                              )
+
+rforest_tune_gs <- tune_grid(
+  rforest_tune_wflow,
+  resamples = train_cv,
+  grid = rforest_tune_grid
+)
+
+btree_tune_gs %>%
+  collect_metrics()
+```
+
+
+```{r}
+class_spec_list[[2]]
+```
+
