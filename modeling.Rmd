@@ -7,6 +7,10 @@ output: html_document
 
 [Link](https://www.kaggle.com/c/shelter-animal-outcomes/data) to Kaggle competition
 
+Questions: 
+
+  + OK to just use every classification model included in Tidymodels?
+
 **Packages**
 
 ```{r, warning = FALSE, message = FALSE}
@@ -14,6 +18,10 @@ library(tidyverse)
 library(magrittr)
 library(lubridate)
 library(tidymodels)
+library(baguette)
+library(plsmod)
+library(rules)
+library(discrim)
 
 set.seed(143)
 ```
@@ -35,3 +43,83 @@ test <- preproc_dir %>%
   read_csv()
 ```
 
+**Approaches**
+
+[Link](https://www.tidymodels.org/find/parsnip/) to list of Tidymodels models
+
+1. Bagged MARS model
+  + engine: "earth"
+  + bag_mars()
+  
+2. Bagged Decision Tree
+  + engine: "rpart"
+  + bag_tree()
+  
+3. Boosted Tree
+  + engine: "xgboost"
+  + boost_tree()
+  
+4. Decision Tree
+  + engine: "rpart"
+  + decision_tree()
+  
+5. MARS
+  + "earth"
+  + mars()
+  
+6. Multi-layer Perceptron
+  + just a single layer neural network
+  + engine: "keras"
+  + mlp()
+  
+7. KNN
+  + engine: "kknn"
+  + nearest_neighbor()
+  
+8. Partial Least Squares (PLS)
+  + engine: "mixOmics"
+  + pls()
+  
+9. Random Forest
+  + engine: "randomForest"
+  + rand_forest()
+  
+10. RuleFit Models
+  + engine: "xrf"
+  + rule_fit()
+  
+11. Polynomial SVM
+  + engine: "kernlab"
+  + svm_poly()
+
+12. RBF SVM
+  + engine: "kernlab"
+  + svm_rbf()
+  
+13. C5.0 Rule-based Classification
+  + engine: "C5.0"
+  + C5_rules()
+  
+14. Flexible Discriminant Model
+  + engine: "earth"
+  + discrim_flexible()
+  
+15. LDA
+  + engine: "MASS"
+  + discrim_linear()
+  
+16. Regularized LDA
+  + engine: "klaR"
+  + discrim_regularized()
+  
+17. Multinomial Regression
+  + engine: "glmnet"
+  + multinom_reg()
+  
+18. Naive Bayes
+  + engine: "klaR"
+  + naive_bayes()
+  
+19. Neural Network
+  + made using keras from scratch
+  + look up architectures for classification

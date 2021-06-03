@@ -1,0 +1,148 @@
+---
+title: "Exploratory Data Analysis"
+author: "Mason Ogden"
+date: "6/1/2021"
+output: html_document
+---
+
+[Link](https://www.kaggle.com/c/shelter-animal-outcomes/data) to Kaggle competition
+
+**Packages**
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(tidymodels)
+
+set.seed(143)
+```
+
+**Data**
+
+```{r, message = FALSE, warning = FALSE}
+dir <- here::here()
+
+preproc_dir <- dir %>%
+  paste0("/preprocessed_data")
+
+train <- preproc_dir %>%
+  paste0("/train_preprocessed.csv") %>%
+  read_csv()
+```
+
+### Exploratory Data Analysis
+
+#### Response variable: Outcome
+
+```{r}
+desc_outcomes <- train %>%
+  count(outcome) %>% 
+  arrange(desc(n)) %>% 
+  pull(outcome)
+
+train %>%
+  mutate(outcome = factor(outcome, levels = desc_outcomes)) %>%
+  count(outcome) %>% 
+  ggplot(aes(x = outcome, y = n)) + 
+  geom_col(fill = "dodgerblue2", width = 0.8) + 
+  labs(x = "Outcome", y = "Count",
+       title = "Distribution of Animal Outcomes in the Training Data") + 
+  theme_minimal()
+```
+
+
+#### Animal Type
+
+```{r}
+train %>%
+  count(animal_type) %>%
+  mutate(prop = n / sum(n)) %>% 
+  ggplot(aes(x = animal_type, y = prop)) + 
+  geom_col(fill = "dodgerblue2", width = 0.8) + 
+  ylim(0, 1) + 
+  labs(x = "Animal Type", y = "Frequency",
+       title = "Proportion of Cats and Dogs in Training Data") +
+  theme_minimal()
+  
+```
+
+#### Sex
+
+```{r}
+train %>% 
+  drop_na() %>%
+  mutate(sex_bin = case_when(
+    str_detect(sex, pattern = "Male") ~ "Male",
+    str_detect(sex, pattern = "Female") ~ "Female",
+    TRUE ~ sex),
+         sex_status = case_when(
+    str_detect(sex, pattern = "Neutered") | str_detect(sex, pattern = "Spayed") ~ "Spayed/Neutered",
+    str_detect(sex, pattern = "Intact") ~ "Intact",
+    TRUE ~ sex)
+    ) %>%
+  select(sex, sex_bin, sex_status) %>%
+  group_by(sex_bin) %>%
+  count(sex_status) %>%
+  ggplot(aes(x = sex_bin, y = n, fill = sex_status)) + 
+  geom_col(position = "stack") + 
+  labs(x = "Sex", y = "Count", fill = "Status",
+       title = "Sex and Status of 26,728 Animals in the Training Data")
+```
+
+#### Age
+
+```{r}
+train %>%
+  ggplot(aes(x = age)) + 
+  geom_histogram(binwidth = 2, fill = "dodgerblue2") + 
+  theme_minimal() + 
+  labs(x = "Age (years)",
+       y = "Count",
+       title = "Distribution of Animal Age in Training Data")
+```
+
+#### Color
+
+```{r}
+desc_colors <- train %>%
+  count(color) %>% 
+  arrange(n) %>% pull(color)
+
+train %>%
+  mutate(color = factor(color, levels = desc_colors)) %>% 
+  count(color) %>%
+  ggplot(aes(x = color, y = n)) + 
+  geom_col(fill = "dodgerblue2") + 
+  coord_flip() + 
+  labs(x = "Animal Coloring",
+       y = "Count",
+       title = "Animal Coloring of Animals in Training Data") + 
+  theme_minimal()
+```
+
+#### Month
+
+```{r}
+train %>%
+  count(outcome_month) %>%
+  ggplot(aes(x = outcome_month, y = n)) + 
+  geom_col(fill = "dodgerblue2") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) + 
+  labs(x = "Month",
+       y = "Number of Animals Experiencing Given Outcome",
+       title = "Distribution of Animal Outcome Occurrences by Month")
+```
+
+#### Year
+
+```{r}
+train %>%
+  count(outcome_year) %>%
+  ggplot(aes(x = outcome_year, y = n)) + 
+  geom_col(fill = "dodgerblue2", width = 0.8) + 
+  labs(x = "Year", y = "Number of Animals Experiencing Given Outcome",
+       title = "Distribution of Animal Outcome Occurrences by Year")
+```
+
+
