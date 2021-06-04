@@ -47,7 +47,7 @@ train %>%
   ggplot(aes(x = outcome, y = n)) + 
   geom_col(fill = "dodgerblue2", width = 0.8) + 
   labs(x = "Outcome", y = "Count",
-       title = "Distribution of Animal Outcomes in the Training Data") + 
+       title = "Figure 1: Distribution of Animal Outcomes in the Training Data") + 
   theme_minimal()
 ```
 
@@ -62,7 +62,7 @@ train %>%
   geom_col(fill = "dodgerblue2", width = 0.8) + 
   ylim(0, 1) + 
   labs(x = "Animal Type", y = "Frequency",
-       title = "Proportion of Cats and Dogs in Training Data") +
+       title = "Figure 2: Proportion of Cats and Dogs in Training Data") +
   theme_minimal()
   
 ```

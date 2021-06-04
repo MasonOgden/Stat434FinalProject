@@ -50,6 +50,7 @@ train_small <- preproc_dir %>%
   ) %>%
   slice_sample(n = 2000)
 
+# create 5 cross-validation folds
 train_cv <- vfold_cv(train_small, v = 5, strata = outcome)
 ```
 
@@ -61,10 +62,6 @@ animal_rec <- recipe(outcome ~ ., data = train_small) %>%
   step_normalize(age) %>%
   step_nzv(mix) %>%
   step_dummy(all_nominal_predictors())
-  #step_nzv(contains("animal_type"),
-  #         contains("sex"), contains("color"),
-  #         contains("outcome_month"),
-  #         contains("outcome_year"))
 
 animal_trained <- animal_rec %>% prep(train_small)
 train_proc <- animal_trained %>% bake(train_small)
@@ -95,156 +92,57 @@ rule_spec_list <- vector(mode = "list", length = 2)
 1. Bagged Decision Tree
   + engine: "rpart"
   + bag_tree()
-  
-```{r}
-bag_dtree <- bag_tree() %>%
-  set_engine("rpart", times = 3) %>%
-  set_mode("classification")
-
-class_spec_list[[1]] <- bag_dtree
-class_spec_names <- c(class_spec_names, "bagged decision tree")
-```
 
   
 2. Boosted Tree
   + engine: "xgboost"
   + boost_tree()
-  
-```{r}
-boosted_tree <- boost_tree() %>%
-  set_engine("xgboost") %>%
-  set_mode("classification")
-
-rule_spec_list[[1]] <- boosted_tree
-rule_spec_names <- c(other_spec_names, "boosted tree")
-```
 
   
 3. Decision Tree
   + engine: "rpart"
   + decision_tree()
-  
-```{r}
-dtree <- decision_tree() %>%
-  set_engine("rpart") %>%
-  set_mode("classification")
-
-class_spec_list[[2]] <- dtree
-class_spec_names <- c(class_spec_names, "decision tree")
-```
 
   
 4. Multi-layer Perceptron
   + just a single layer neural network
   + engine: "keras"
   + mlp()
-  
-```{r}
-mlperceptron <- mlp() %>%
-  set_engine("keras") %>%
-  set_mode("classification")
-
-other_spec_list[[1]] <- mlperceptron
-other_spec_names <- c(other_spec_names, "MLP")
-```
 
   
 5. KNN
   + engine: "kknn"
   + nearest_neighbor()
-  
-```{r}
-knn <- nearest_neighbor() %>%
-  set_engine("kknn") %>%
-  set_mode("classification")
-
-class_spec_list[[3]] <- knn
-class_spec_names <- c(class_spec_names, "KNN")
-```
 
   
 7. Random Forest
   + engine: "randomForest"
   + rand_forest()
-  
-```{r}
-random_forest <- rand_forest() %>%
-  set_engine("randomForest") %>%
-  set_mode("classification")
-
-class_spec_list[[4]] <- random_forest
-class_spec_names <- c(class_spec_names, "random forest")
-```
 
   
 8. Polynomial SVM
   + engine: "kernlab"
   + svm_poly()
-  
-```{r}
-svm <- svm_poly() %>%
-  set_engine("kernlab") %>%
-  set_mode("classification")
-
-svm_spec_list[[1]] <- svm
-svm_spec_names <- c(svm_spec_names, "svm")
-```
 
 
 9. RBF SVM
   + engine: "kernlab"
   + svm_rbf()
-  
-```{r}
-svm_radial <- svm_rbf() %>%
-  set_engine("kernlab") %>%
-  set_mode("classification")
-
-svm_spec_list[[2]] <- svm
-svm_spec_names <- c(svm_spec_names, "svm rbf")
-```
 
   
 10. C5.0 Rule-based Classification
   + engine: "C5.0"
   + C5_rules()
-  
-```{r}
-c5_rules <- C5_rules() %>%
-  set_engine("C5.0") %>%
-  set_mode("classification")
-
-rule_spec_list[[2]] <- c5_rules
-rule_spec_names <- c(rule_spec_names, "C5.0 rules")
-```
 
   
 11. Flexible Discriminant Model
   + engine: "earth"
   + discrim_flexible()
-  
-```{r}
-flexible_lda <- discrim_flexible() %>%
-  set_engine("earth") %>%
-  set_mode("classification")
-
-lda_spec_list[[1]] <- flexible_lda
-lda_spec_names <- c(lda_spec_names, "flexible LDA")
-```
 
 
 12. Multinomial Regression
   + engine: "glmnet"
   + multinom_reg()
-  
-```{r}
-mlr <- multinom_reg() %>%
-  set_engine("keras") %>%
-  set_mode("classification")
-
-other_spec_list[[2]] <- mlr
-other_spec_names <- c(other_spec_names, "multinomial regression")
-```
 
   
 13. Naive Bayes
@@ -252,23 +150,70 @@ other_spec_names <- c(other_spec_names, "multinomial regression")
   + naive_bayes()
   
 ```{r}
+boosted_tree <- boost_tree() %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+bag_dtree <- bag_tree() %>%
+  set_engine("rpart", times = 3) %>%
+  set_mode("classification")
+
+dtree <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+mlperceptron <- mlp() %>%
+  set_engine("keras") %>%
+  set_mode("classification")
+
+knn <- nearest_neighbor() %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+random_forest <- rand_forest() %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+svm <- svm_poly() %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+svm_radial <- svm_rbf() %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+
+c5_rules <- C5_rules() %>%
+  set_engine("C5.0") %>%
+  set_mode("classification")
+
+flexible_lda <- discrim_flexible() %>%
+  set_engine("earth") %>%
+  set_mode("classification")
+
+mlr <- multinom_reg() %>%
+  set_engine("keras") %>%
+  set_mode("classification")
+
 nbclassifier <- naive_Bayes() %>%
   set_engine("klaR") %>%
   set_mode("classification")
 
-other_spec_list[[3]] <- nbclassifier
-other_spec_names <- c(other_spec_names, "naive bayes")
-```
+rule_spec_list <- list(boosted_tree, c5_rules)
+rule_spec_names <- c("boosted tree", "C5.0 rules")
 
-  
-14. Neural Network
-  + made using keras from scratch
-  + look up architectures for classification
-  
-#### Fitting Models with Cross-validation
+class_spec_list <- list(bag_dtree, dtree, knn, random_forest)
+class_spec_names <- list("bagged decision tree", "decision tree", "KNN", "random forest")
 
-```{r}
-tibble(
+other_spec_list <- list(mlperceptron, mlr, nbclassifier)
+other_spec_names <- c("MLP", "multinomial regression", "naive bayes")
+
+svm_spec_list <- list(svm, svm_radial)
+svm_spec_names <- c("svm", "svm rbf")
+
+lda_spec_list <- list(flexible_lda)
+lda_spec_names <- c("flexible LDA")
+
+model_spec_df <- tibble(
   category = c("class", "lda", "svm", "rule", "other"),
   num_models = c(length(class_spec_names),
                  length(lda_spec_names),
@@ -283,7 +228,11 @@ tibble(
              paste0(other_spec_names, collapse = ", ")
              )
 )
+
+model_spec_df
 ```
+  
+#### Fitting Models with Cross-validation
 
 **Models from Class**
 
@@ -418,7 +367,6 @@ baseline_model_results %>%
   labs(x = "", y = "Cross-validated Value",
        title = "Comparing Cross-validated Metrics of 12 Classification Models",
        subtitle = "Note: no hyperparameters have been tuned")
-  
 ```
 
 ### Tuning Hyperparameters of Top 4 Models:
@@ -623,6 +571,7 @@ best_btree_wflow <- workflow() %>%
   add_model(best_btree_spec)
 ```
 
+**Random Forest**
 
 ```{r}
 rforest_tune <- rand_forest(mtry = tune(),

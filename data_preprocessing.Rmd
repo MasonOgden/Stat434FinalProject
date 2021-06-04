@@ -21,7 +21,7 @@ set.seed(143)
 **Data**
 
 ```{r, message = FALSE}
-dir <- here::here()
+dir <- getwd()
 dataset_dir <- dir %>%
   paste0("/datasets")
 
