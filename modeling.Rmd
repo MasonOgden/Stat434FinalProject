@@ -9,10 +9,6 @@ output: html_document
 
 [Link](https://www.kaggle.com/c/shelter-animal-outcomes/data) to Kaggle competition
 
-Questions: 
-
-  + OK to just use every classification model included in Tidymodels?
-
 **Packages**
 
 ```{r, warning = FALSE, message = FALSE}
@@ -20,9 +16,9 @@ library(tidyverse)
 library(magrittr)
 library(tidymodels)
 library(baguette)
-library(plsmod)
 library(rules)
 library(discrim)
+library(fastDummies)
 
 set.seed(143)
 ```
@@ -30,14 +26,18 @@ set.seed(143)
 **Data**
 
 ```{r, message = FALSE, warning = FALSE}
+# define working directory
 dir <- here::here()
 
+# directory where preprocessed data is held
 preproc_dir <- dir %>%
   paste0("/preprocessed_data")
 
+# read in preprocessed training data
 train_small <- preproc_dir %>%
   paste0("/train_preprocessed.csv") %>%
   read_csv() %>%
+  # drop rows with missing values (we only lose 1409 rows)
   drop_na() %>%
   mutate(
     animal_type = factor(animal_type),
@@ -49,10 +49,6 @@ train_small <- preproc_dir %>%
     mix = factor(mix)
   ) %>%
   slice_sample(n = 2000)
-
-test <- preproc_dir %>%
-  paste0("/test_preprocessed.csv") %>%
-  read_csv()
 
 train_cv <- vfold_cv(train_small, v = 5, strata = outcome)
 ```
@@ -90,7 +86,7 @@ rule_spec_list <- vector(mode = "list", length = 2)
 ```
 
 
-### Modeling
+### Initial Modeling
 
 #### Specifying the models
 
@@ -427,10 +423,6 @@ baseline_model_results %>%
 
 ### Tuning Hyperparameters of Top 4 Models:
 
-```{r}
-rev(asc_rocauc_order)[1:4]
-```
-
 **Flexible LDA**
 
 Wasn't able to tune `num_terms` because using anything less than all 58 columns results in matrix singularity issues. 
@@ -458,11 +450,14 @@ lda_tune_gs <- tune_grid(
 best_lda_attrs <- lda_tune_gs %>% 
   collect_metrics() %>%
   filter(.metric == "roc_auc") %>%
-  slice_max(mean)
+  slice_max(mean) %>%
+  slice_tail()
 
+# value = 1
 best_prod_degree <- best_lda_attrs %>% 
   pull(prod_degree)
 
+# value = "backward"
 best_prune_method <- best_lda_attrs %>%
   pull(prune_method)
 
@@ -471,7 +466,7 @@ best_lda_flex_spec <- discrim_flexible(prod_degree = best_prod_degree,
   set_engine("earth") %>% 
   set_mode("classification")
 
-lda_wflow <- workflow() %>%
+best_lda_flex_wflow <- workflow() %>%
   add_recipe(animal_rec) %>%
   add_model(best_lda_flex_spec)
 ```
@@ -484,15 +479,52 @@ dtree_tune <- decision_tree(cost_complexity = tune(),
                             min_n = tune()) %>%
   set_engine("rpart") %>%
   set_mode("classification")
+
+dtree_tune_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(dtree_tune)
+
+dtree_tune_grid <- grid_regular(cost_complexity(),
+                                tree_depth(),
+                                min_n(),
+                                levels = 3)
+
+dtree_tune_gs <- tune_grid(
+  dtree_tune_wflow,
+  resamples = train_cv,
+  grid = dtree_tune_grid
+)
+
+best_dtree_attrs <- dtree_tune_gs %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean) %>%
+  slice_tail()
+
+# value = 3.162278e-06
+best_cost_complexity <- best_dtree_attrs %>%
+  pull(cost_complexity)
+
+# value = 8
+best_tree_depth <- best_dtree_attrs %>%
+  pull(tree_depth)
+
+# value = 40
+best_min_n <- best_dtree_attrs %>%
+  pull(min_n)
+
+best_dtree_spec <- decision_tree(cost_complexity = best_cost_complexity,
+                            tree_depth = best_tree_depth,
+                            min_n = best_min_n) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+best_dtree_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(best_dtree_spec)
 ```
 
 **Boosted Tree**
-
-Optimize groups below one at a time
-
-each tree: mtry, min_n, tree_depth
-
-boosting: trees, learn_rate
 
 Tuning individual tree parameters:
 
@@ -522,14 +554,18 @@ btree_tune1_gs <- tune_grid(
 best_btree_tune1 <- btree_tune1_gs %>%
   collect_metrics() %>%
   filter(.metric == "roc_auc") %>%
-  slice_max(mean)
+  slice_max(mean) %>%
+  slice_tail()
 
+# value = 58
 best_mtry <- best_btree_tune1 %>%
   pull(mtry)
 
+# value = 2
 best_min_n <- best_btree_tune1 %>%
   pull(min_n)
 
+# value = 8
 best_tree_depth <- best_btree_tune1 %>%
   pull(tree_depth)
 ```
@@ -551,7 +587,7 @@ btree_tune2_wflow <- workflow() %>%
 
 btree_tune2_grid <- grid_regular(trees(),
                                  learn_rate(),
-                                 levels = 3
+                                 levels = 2
                                  )
 
 btree_tune2_gs <- tune_grid(
@@ -560,12 +596,31 @@ btree_tune2_gs <- tune_grid(
   grid = btree_tune2_grid
 )
 
-best_btree_tune2 <- btree_tune1_gs %>%
+best_btree_tune2 <- btree_tune2_gs %>%
   collect_metrics() %>%
   filter(.metric == "roc_auc") %>%
-  slice_max(mean)
+  slice_max(mean) %>%
+  slice_tail()
 
-best_num_tres
+# value = 2000 
+best_num_trees <- best_btree_tune2 %>%
+  pull(trees)
+
+# value = 0.1
+best_learn_rate <- best_btree_tune2 %>%
+  pull(learn_rate)
+
+best_btree_spec <- boost_tree(mtry = best_mtry,
+                              min_n = best_min_n,
+                              tree_depth = best_tree_depth,
+                              trees = best_num_trees,
+                              learn_rate = best_learn_rate) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+  
+best_btree_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(best_btree_spec)
 ```
 
 
@@ -580,7 +635,7 @@ rforest_tune_wflow <- workflow() %>%
   add_recipe(animal_rec) %>%
   add_model(rforest_tune)
 
-rforest_tune_grid <- grid_regular(mtry(c(1, ncol(train_proc))),
+rforest_tune_grid <- grid_regular(mtry(c(1, ncol(train_proc) - 2)),
                               dials::trees(),
                               min_n(),
                               levels = 2
@@ -592,12 +647,133 @@ rforest_tune_gs <- tune_grid(
   grid = rforest_tune_grid
 )
 
-btree_tune_gs %>%
-  collect_metrics()
+best_rforest_attrs <- rforest_tune_gs %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean) %>%
+  slice_tail()
+
+# value = 58
+best_mtry <- best_rforest_attrs %>%
+  pull(mtry) %>%
+  subtract(2)
+
+# value = 2000
+best_trees <- best_rforest_attrs %>%
+  pull(trees)
+
+# value = 40
+best_min_n <- best_rforest_attrs %>%
+  pull(min_n)
+
+best_rforest_spec <- rand_forest(mtry = best_mtry,
+                                 trees = best_trees,
+                                 min_n = best_min_n) %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+best_rforest_wflow <- workflow() %>%
+  add_recipe(animal_rec) %>%
+  add_model(best_rforest_spec)
+```
+
+### Comparing Tuned Models:
+
+I may need to reduce 'trees' argument, since that seems to be getting set to the max value of 2000, which is unreasonable
+
+```{r}
+tuned_model_names <- c("flexible LDA", "decision tree", "boosted tree", "random forest")
+tuned_wflow <- list(best_lda_flex_wflow, best_dtree_wflow, best_btree_wflow, best_rforest_wflow)
+
+eval_metrics <- metric_set(roc_auc, accuracy, precision, recall, f_meas)
+
+tuned_wflow_cvfit <- tuned_wflow %>%
+  map(\(x) x %>% fit_resamples(resamples = train_cv,
+                               metrics = eval_metrics))
+
+tuned_cv_results <- map2_df(tuned_wflow_cvfit, tuned_model_names,
+                            \(x, y) x %>% 
+                              collect_metrics() %>%
+                              add_column(model_name = y, .before = ".metric") %>%
+                              dplyr::select(model_name, metric = .metric, cv_value = mean)
+                            )
+
+asc_rocauc_order <- tuned_cv_results %>%
+  filter(metric == "roc_auc") %>% 
+  arrange(cv_value) %>% 
+  pull(model_name)
+
+tuned_cv_results %>%
+  mutate(model_name = factor(model_name, levels = asc_rocauc_order)) %>%
+  ggplot(aes(x = model_name, y = cv_value, fill = metric)) + 
+  geom_col(position = "dodge") + 
+  coord_flip() + 
+  labs(x = "", y = "Cross-validated Value",
+       title = "Comparing Cross-validated Metrics of 4 Classification Models",
+       subtitle = "Note: All hyperparameters have been tuned")
+```
+
+### Fitting Chosen Model to All Training Data
+
+**Get all training data and testing data**
+
+```{r}
+train <- preproc_dir %>%
+  paste0("/train_preprocessed.csv") %>%
+  read_csv() %>%
+  drop_na() %>%
+  mutate(
+    animal_type = factor(animal_type),
+    sex = factor(sex),
+    color = factor(color),
+    outcome = factor(outcome),
+    outcome_month = factor(outcome_month),
+    outcome_year = factor(outcome_year),
+    mix = factor(mix)
+  )
+
+test <- preproc_dir %>%
+  paste0("/test_preprocessed.csv") %>%
+  read_csv() %>%
+  drop_na() %>%
+  mutate(
+    animal_id = as.character(animal_id),
+    animal_type = factor(animal_type),
+    sex = factor(sex),
+    color = factor(color),
+    outcome_month = factor(outcome_month),
+    outcome_year = factor(outcome_year),
+    mix = factor(mix)
+  )
 ```
 
 
 ```{r}
-class_spec_list[[2]]
+final_fit <- best_lda_flex_wflow %>%
+  fit(train)
+```
+
+### Creating Submission File
+
+```{r}
+submission_dir <- dir %>%
+  paste0("/submissions")
+
+pred_outcomes <- final_fit %>%
+  predict(new_data = test, type = "class")
+
+submission <- pred_outcomes %>%
+  add_column(ID = 1:nrow(pred_outcomes)) %>%
+  select(ID, outcome = .pred_class) %>%
+  dummy_cols() %>%
+  select(-outcome, ID,
+         Adoption = outcome_Adoption,
+         Died = outcome_Died,
+         Euthanasia = outcome_Euthanasia,
+         Return_to_owner = outcome_Return_to_owner,
+         Transfer = outcome_Transfer)
+
+submission %>%
+  write_csv(file = paste0(submission_dir, "/submission1.csv"))
 ```
 

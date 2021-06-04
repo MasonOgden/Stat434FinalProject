@@ -1,5 +1,0 @@
-"0","zoo_pcs %>%"
-"0","  ggplot(aes(x = PC1, y = PC2, color = Class_Type)) + "
-"0","  geom_point() + "
-"0","  labs(x = ""Principal Component 1"", "
-"0","       y = ""Principal Component 2"")"
